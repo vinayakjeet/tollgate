@@ -21,7 +21,14 @@ dependencies = [
 # overhead number this project publishes is a decomposition of these spans, and a
 # decomposition cannot be added afterwards.
 [tool.uv.sources]
-spanlight = { git = "https://github.com/vinayakjeet/spanlight" }
+# Pinned to a revision, not to a branch. An unpinned git dependency means a build
+# today and a build next month can install different code while the lockfile and
+# the README both claim otherwise, which breaks the one thing this portfolio sells:
+# every number regenerating from a script. It is also the obvious supply-chain
+# exposure, since whatever lands on the default branch is what gets executed.
+#
+# Bump this deliberately, and re-run any published number that depends on tracing.
+spanlight = { git = "https://github.com/vinayakjeet/spanlight", rev = "abe44e2b90fa855cb8c7a9c5e9e3bdb97488237b" }
 
 [dependency-groups]
 dev = [

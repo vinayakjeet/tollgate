@@ -22,12 +22,16 @@ providers:
   groq:
     base_url: "https://api.groq.com/openai/v1"
     api_key_env: "GROQ_API_KEY"
-    default_model: "llama-3.3-70b-versatile"
+    # Was llama-3.3-70b-versatile until Groq removed it from the catalogue. A
+    # sibling project hit the same 404 mid-build. Verified against the live
+    # /v1/models listing rather than a docs page, which is the only way this stays
+    # true: a default model is a measurement with a date, not a constant.
+    default_model: "openai/gpt-oss-120b"
     rpm_limit: 30
     reset_window: "per minute"
     input_price_per_1m: 0.0
     output_price_per_1m: 0.0
-    last_verified: "2026-08-04"
+    last_verified: "2026-08-22"
 
   cerebras:
     base_url: "https://api.cerebras.ai/v1"

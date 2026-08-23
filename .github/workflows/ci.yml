@@ -22,5 +22,10 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check .
 
+      # The writing conventions used to be enforced by whoever read the diff. That
+      # works for one author and stops working the moment there are three.
+      - name: Conventions
+        run: uv run python scripts/check_conventions.py
+
       - name: Test (pytest)
         run: uv run pytest
