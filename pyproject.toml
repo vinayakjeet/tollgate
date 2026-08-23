@@ -1,7 +1,7 @@
 [project]
-name = "ai-portfolio-template"
+name = "tollgate"
 version = "0.1.0"
-description = "Foundation template for the production-AI portfolio: FastAPI service skeleton + provider-agnostic llm/ client."
+description = "OpenAI-compatible gateway over free-tier model providers: budget-aware routing, two-layer caching, and per-request metering."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -12,16 +12,24 @@ dependencies = [
     "httpx>=0.27",
     "tenacity>=9.0",
     "pyyaml>=6.0",
-    "opentelemetry-sdk>=1.28",
-    "opentelemetry-exporter-otlp-proto-http>=1.28",
-    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    # No opentelemetry here. Spanlight declares the SDK and the OTLP exporter it
+    # needs, and nothing in this repo imports otel directly.
+    "spanlight",
 ]
+
+# Spanlight is instrumented from the first commit rather than retrofitted. The
+# overhead number this project publishes is a decomposition of these spans, and a
+# decomposition cannot be added afterwards.
+[tool.uv.sources]
+spanlight = { git = "https://github.com/vinayakjeet/spanlight" }
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.7",
+    # Used only to prove the response really parses in the client callers use.
+    "openai>=1.0",
 ]
 
 [tool.uv]

@@ -1,9 +1,11 @@
-# Render free tier. Rename the service before deploying a fork. The service spins down when idle, so the first request after
-# a quiet period pays a cold start. That is accepted and documented rather than
-# engineered around (see SPEC.md A5).
+# Render free tier. The service spins down when idle, so the first request after a
+# quiet period pays a cold start. That is accepted and documented rather than
+# engineered around, but it is load-bearing for the 72 hour trace in BACKLOG M8.1:
+# the trace has to survive cold starts rather than assume continuous uptime, and a
+# spin-down is not a user-facing failure.
 services:
   - type: web
-    name: CHANGE-ME
+    name: tollgate
     runtime: python
     plan: free
     buildCommand: pip install uv && uv sync --frozen --no-dev
@@ -18,6 +20,22 @@ services:
         value: "3.13.2"
       - key: ENVIRONMENT
         value: production
-      # Set in the Render dashboard, never committed.
-      - key: SHIPGATE_DB_URL
+      # All set in the Render dashboard, never committed.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_HEADERS
         sync: false

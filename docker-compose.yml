@@ -7,7 +7,7 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgresql://portfolio:portfolio@postgres:5432/portfolio
+      DATABASE_URL: postgresql://tollgate:tollgate@postgres:5432/tollgate
       REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
@@ -18,15 +18,15 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: portfolio
-      POSTGRES_PASSWORD: portfolio
-      POSTGRES_DB: portfolio
+      POSTGRES_USER: tollgate
+      POSTGRES_PASSWORD: tollgate
+      POSTGRES_DB: tollgate
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U portfolio -d portfolio"]
+      test: ["CMD-SHELL", "pg_isready -U tollgate -d tollgate"]
       interval: 5s
       timeout: 5s
       retries: 5
