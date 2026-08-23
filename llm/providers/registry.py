@@ -67,6 +67,11 @@ def load_providers(path: Path = DEFAULT_QUOTAS_PATH) -> dict[str, Provider]:
 _PROVIDERS = load_providers()
 
 
+def known_providers() -> frozenset[str]:
+    """Provider names the registry can actually dispatch to, including `mock`."""
+    return frozenset(_PROVIDERS)
+
+
 def get_provider(name: str) -> Provider:
     try:
         return _PROVIDERS[name]
