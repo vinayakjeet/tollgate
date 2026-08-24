@@ -14,6 +14,24 @@ reconstructed later from memory. Newest entries at the top.
 
 <!-- Add entries above this line. -->
 
+## 2026-08-24: The overhead harness refuses to print an unattributed number
+**Context:** the brief demands `make bench` report RPS first, then p50/p95/p99, then in-flight, with five facts per figure; DeepInspect's five traps name exactly how these benchmarks usually lie.
+**Decision:** every row carries its five facts as printed data, and the harness asserts completeness before rendering anything. A variance gate runs before measurement: 1,000 in-process mock calls must show p99-median spread under 1ms or the script exits rather than publishing. Saturation replays each cell's own shape (a "streaming, saturation" row that measured non-streaming traffic would be a lie the facts column itself would catch).
+**Alternatives considered:** printing numbers with facts in surrounding prose lets a quote outlive its caveats. Facts-as-columns means any excerpt of this table still carries what it measured.
+**Consequences:** adding an upstream or load shape is one tuple in CELLS; removing a fact breaks the assert loudly.
+
+## 2026-08-24: Selector loops and one pooled client on Windows
+**Context:** the first full bench run died with MemoryError inside the Proactor loop's transport allocation under connect churn, while per-request AsyncClient construction piled up TIME_WAIT sockets.
+**Decision:** the bench process and the network_mock server thread both run selector event loops on win32; the provider side uses one shared pooled httpx client for the entire run.
+**Alternatives considered:** chasing Proactor-specific allocation failures was rejected as unmeasurable rabbit-holing; the fixture's job is to be deterministic and dull, not to stress-test asyncio.
+**Consequences:** production code is untouched (uvicorn defaults remain); only the harness changed. The failure is recorded in README What Broke because it cost an hour and will recur somewhere else in the portfolio.
+
+## 2026-08-24: Cached answers re-stream, and their faster TTFT is disclosed
+**Context:** M3.3 requires a cache hit serving stream=true to replay chunks so caller code paths do not change, which necessarily changes time-to-first-token.
+**Decision:** cached completions replay one word per frame like live streams, the response header says `x-tollgate-cache: exact`, and bench streaming rows print live versus cached-replay TTFT medians separately from the same run.
+**Alternatives considered:** returning one block for cached hits would simplify the server and silently change every streaming caller's parsing; hiding TTFT in the aggregate would flatter the cache.
+**Consequences:** callers get identical shapes for live and cached; anyone auditing latency sees the trade stated next to the numbers.
+
 ## 2026-08-24: Edge auth is one key, optional locally, loud about it
 **Context:** M4.2 requires the edge be secure by default, while BAR-1 requires a fresh clone to work in five minutes with no configuration at all.
 **Decision:** a single bearer key (`EDGE_API_KEY`) guards every gateway route when set, compared via `hmac.compare_digest`. When unset, routes are open and startup emits exactly one warning naming the fix.
