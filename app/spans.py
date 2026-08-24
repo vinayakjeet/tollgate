@@ -10,7 +10,7 @@ touches it instead of quietly producing a panel that renders nothing.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 import spanlight
@@ -159,19 +159,25 @@ def _permitted(stage: str, offered: set[str]) -> set[str]:
 
 
 @contextmanager
-def stage_span(stage: str, **attributes: object) -> Iterator[StageSpan]:
+def stage_span(
+    stage: str, context=None, **attributes: object
+) -> Iterator[StageSpan]:
     """Open one of the spans named in `bench/stages.md`.
 
     Nesting comes from the tracer's current context, so a stage opened inside another
     stage is its child without either naming the other. That is what makes the tree
     in `bench/stages.md` real rather than a diagram: a request produces one
     `tollgate.request` with its stages beneath it, not eleven parentless roots.
+
+    `context` exists for the streaming path: the body generator runs in whatever
+    task iterates it, where the handler's context is not current, so it hands the
+    request span's context explicitly rather than trusting ambient propagation.
     """
     if stage not in CONTRACT:
         raise UndeclaredAttribute(f"unknown stage {stage!r}, not in bench/stages.md")
 
     tracer = spanlight.get_tracer()
-    with tracer.start_as_current_span(stage) as span:
+    with tracer.start_as_current_span(stage, context=context) as span:
         handle = StageSpan(span, stage)
         if attributes:
             handle.record(**attributes)
@@ -181,3 +187,36 @@ def stage_span(stage: str, **attributes: object) -> Iterator[StageSpan]:
             span.set_attribute("error.type", type(exc).__name__)
             span.set_status(Status(StatusCode.ERROR))
             raise
+
+
+def open_stage(
+    stage: str, attributes: dict | None = None, context=None
+) -> tuple[StageSpan, Callable[[BaseException | None], None]]:
+    """Manual variant of `stage_span` for spans that must outlive the task that
+    opened them.
+
+    The streamed-response REQUEST span has to stay open while another task drains
+    the body generator. A context manager cannot cross that boundary: its exit
+    detaches a contextvars token created in a different context, which fails noisily.
+    So the caller gets the span and an explicit finish function instead; ending the
+    span becomes a decision, not unwinding.
+
+    A GeneratorExit passed to finish ends the span without error status: a client
+    disconnect that closed early is exactly what happened, and the mark plus the
+    early end say so to anyone reading the trace.
+    """
+    if stage not in CONTRACT:
+        raise UndeclaredAttribute(f"unknown stage {stage!r}, not in bench/stages.md")
+
+    span = spanlight.get_tracer().start_span(stage, context=context)
+    handle = StageSpan(span, stage)
+    if attributes:
+        handle.record(**attributes)
+
+    def finish(exc: BaseException | None = None) -> None:
+        if exc is not None and not isinstance(exc, GeneratorExit):
+            span.set_attribute("error.type", type(exc).__name__)
+            span.set_status(Status(StatusCode.ERROR))
+        span.end()
+
+    return handle, finish

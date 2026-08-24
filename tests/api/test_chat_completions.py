@@ -71,9 +71,11 @@ def test_bare_model_name_falls_back_to_the_configured_provider(client):
     assert resp.headers["x-tollgate-provider"] == "mock"
 
 
-def test_streaming_is_refused_explicitly_rather_than_ignored(client):
+def test_stream_flag_returns_an_sse_response(client):
     resp = client.post("/v1/chat/completions", json={**BODY, "stream": True})
-    assert resp.status_code == 501
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert "data: [DONE]" in resp.text
 
 
 @pytest.mark.parametrize(

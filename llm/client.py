@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
+from collections.abc import AsyncIterator
 
 import structlog
 
 from llm.providers.registry import get_provider
 from llm.retry import retry_with_backoff
 from llm.throttle import InMemoryThrottle, ThrottleBackend
-from llm.types import ChatMessage, ChatResponse, RateLimitError
+from llm.types import ChatChunk, ChatMessage, ChatResponse, ProviderError, RateLimitError
 
 logger = structlog.get_logger(__name__)
 
@@ -68,3 +70,45 @@ class ChatClient:
             latency_ms=response.latency_ms,
         )
         return response
+
+    async def stream_complete(
+        self, provider: str, messages: list[ChatMessage], **kwargs: object
+    ) -> AsyncIterator[ChatChunk]:
+        """Streaming dispatch with retry-until-first-chunk semantics.
+
+        Before the first chunk arrives a failure is invisible to the caller, so
+        the usual machinery applies: throttle gate inside the loop, backoff on
+        transient errors, trip on 429. After it, bytes have been forwarded and no
+        retry can unsend them; a mid-stream failure propagates and the API layer
+        tells the caller honestly what happened.
+        """
+        provider_impl = get_provider(provider)
+        attempts = 0
+        first_chunk_sent = False
+
+        while True:
+            attempts += 1
+            wait = await self._throttle.is_open(provider)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                async for chunk in provider_impl.stream_completion(messages, **kwargs):
+                    first_chunk_sent = True
+                    yield chunk
+                return
+            except RateLimitError as exc:
+                if first_chunk_sent or attempts >= self._max_retry_attempts:
+                    raise
+                await self._throttle.trip(provider, exc.retry_after)
+                await self._backoff_sleep(attempts)
+            except ProviderError as exc:
+                logger.warning("llm.stream.retry", provider=provider, error=str(exc))
+                if first_chunk_sent or attempts >= self._max_retry_attempts:
+                    raise
+                await self._backoff_sleep(attempts)
+
+    @staticmethod
+    async def _backoff_sleep(attempt: int) -> None:
+        # Same shape as the decorator on complete(): exponential with jitter, so
+        # simultaneous failures do not retry in lockstep.
+        await asyncio.sleep(min(30.0, (2**attempt) + random.uniform(0, 1)))

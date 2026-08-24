@@ -18,6 +18,19 @@ class ChatResponse(BaseModel):
     latency_ms: float = 0.0
 
 
+class ChatChunk(BaseModel):
+    """One streamed delta. `finish_reason` arrives on the final content chunk;
+    token counts, when the provider reports them at all for streams, ride on a
+    terminal chunk with both fields set."""
+
+    text_delta: str = ""
+    provider: str
+    model: str
+    finish_reason: str | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+
+
 class ProviderError(Exception):
     """Transient provider failure (5xx, network error) - safe to retry."""
 

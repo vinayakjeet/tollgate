@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Protocol
 
 import httpx
 
 from llm.types import (
+    ChatChunk,
     ChatMessage,
     ChatResponse,
     ProviderClientError,
@@ -29,6 +30,10 @@ class Provider(Protocol):
     async def chat_completion(
         self, messages: list[ChatMessage], **kwargs: object
     ) -> ChatResponse: ...
+
+    async def stream_completion(
+        self, messages: list[ChatMessage], **kwargs: object
+    ) -> AsyncIterator[ChatChunk]: ...
 
 
 def default_usage_parser(payload: dict) -> tuple[int | None, int | None]:
@@ -206,7 +211,7 @@ class OpenAICompatibleProvider:
         if resp.status_code >= 400:
             raise ProviderClientError(f"{self.name}: client error {resp.status_code}: {resp.text}")
 
-        data = resp.json()
+        data = _parse_json_body(self.name, resp)
         text = data["choices"][0]["message"]["content"]
         tokens_in, tokens_out = self._usage_parser(data)
 
@@ -217,4 +222,119 @@ class OpenAICompatibleProvider:
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost_usd=self._cost_usd(tokens_in, tokens_out),
+        )
+
+    async def stream_completion(
+        self, messages: list[ChatMessage], model: str | None = None, **kwargs: object
+    ) -> AsyncIterator[ChatChunk]:
+        """SSE passthrough. Chunks are yielded as they arrive; nothing buffers the
+        body, because buffering would fold time-to-first-token into total latency
+        and hand this project's headline number exactly the flattering bias SPEC
+        says to measure against.
+
+        Retries are not possible past the first chunk: bytes already forwarded
+        cannot be unsent, so any mid-stream failure propagates to the caller as-is.
+        """
+        api_key = self._require_api_key()
+        resolved_model = model or self._default_model
+        payload = {
+            "model": resolved_model,
+            "messages": [m.model_dump() for m in messages],
+            "stream": True,
+            **kwargs,
+        }
+        headers = {"Authorization": f"Bearer {api_key}"}
+
+        client = self._client or httpx.AsyncClient(
+            base_url=self._base_url, timeout=DEFAULT_TIMEOUT
+        )
+        own_client = self._client is None
+        try:
+            async with client.stream(
+                "POST", "/chat/completions", json=payload, headers=headers
+            ) as resp:
+                if resp.status_code == 429:
+                    body = await resp.aread()
+                    raise RateLimitError(
+                        f"{self.name}: rate limited",
+                        retry_after=_retry_after_from_bytes(resp.headers, body),
+                    )
+                if resp.status_code >= 500:
+                    raise ProviderError(f"{self.name}: server error {resp.status_code}")
+                if resp.status_code >= 400:
+                    body = (await resp.aread()).decode(errors="replace")
+                    raise ProviderClientError(
+                        f"{self.name}: client error {resp.status_code}: {body}"
+                    )
+
+                async for chunk in _iter_sse_chunks(self.name, resp, resolved_model):
+                    yield chunk
+        except httpx.RequestError as exc:
+            raise ProviderError(f"{self.name}: network error: {exc}") from exc
+        finally:
+            if own_client:
+                await client.aclose()
+
+
+def _retry_after_from_bytes(headers: httpx.Headers, body: bytes) -> float | None:
+    """The stream path has a body only as bytes, so hand parse_retry_after a
+    stand-in carrying just the two things it reads."""
+    return parse_retry_after(_FakeResponse(headers, body))
+
+
+class _FakeResponse:
+    """Just enough of httpx.Response for parse_retry_after's JSON paths."""
+
+    def __init__(self, headers: httpx.Headers, body: bytes) -> None:
+        self.headers = headers
+        self._body = body
+
+    def json(self):
+        return json.loads(self._body)
+
+
+def _parse_json_body(name: str, resp: httpx.Response) -> dict:
+    """A malformed 200 must be a retryable provider fault, not a 500 from our own
+    JSON decoder. The fault-injection suite (M4.1) is what forced this to exist."""
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise ProviderError(f"{name}: malformed response body: {exc}") from exc
+
+
+async def _iter_sse_chunks(
+    name: str, resp: httpx.Response, model: str
+) -> AsyncIterator[ChatChunk]:
+    """Parse OpenAI-shaped SSE into ChatChunks.
+
+    Tolerates the two line endings and the keep-alive comment lines real
+    providers emit. A `data:` line that is neither JSON nor [DONE] is a protocol
+    violation from upstream and surfaces as a ProviderError rather than silence.
+    """
+    async for line in resp.aiter_lines():
+        if not line.startswith("data:"):
+            continue
+        data = line[len("data:") :].strip()
+        if not data:
+            continue
+        if data == "[DONE]":
+            return
+        try:
+            event = json.loads(data)
+        except ValueError as exc:
+            raise ProviderError(f"{name}: malformed stream frame: {exc}") from exc
+
+        choices = event.get("choices") or []
+        delta = (choices[0].get("delta") if choices else None) or {}
+        usage = event.get("usage") or {}
+        finish = choices[0].get("finish_reason") if choices else None
+        if finish is None and not delta.get("content") and not usage:
+            continue
+        yield ChatChunk(
+            text_delta=delta.get("content") or "",
+            provider=name,
+            model=event.get("model") or model,
+            finish_reason=finish,
+            tokens_in=usage.get("prompt_tokens"),
+            tokens_out=usage.get("completion_tokens"),
         )
