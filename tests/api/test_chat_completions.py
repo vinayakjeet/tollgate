@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from openai import AsyncOpenAI
 
 from app.main import app as fastapi_app
-from app.routers import v1 as v1_module
 from llm.types import ChatResponse, ProviderClientError, ProviderError
 
 BODY = {"model": "mock/demo", "messages": [{"role": "user", "content": "hello"}]}
+
+
+def _gateway(client: TestClient):
+    """The gateway assembled in create_app. Dispatch is patched through it rather
+    than through a module singleton, so two tests can carry two different clients."""
+    return client.app.state.gateway
 
 
 def test_returns_an_openai_shaped_completion(client):
@@ -39,7 +45,7 @@ def test_overhead_excludes_the_upstream_call(client, monkeypatch):
         await asyncio.sleep(0.25)
         return ChatResponse(text="late", provider="mock", model="demo")
 
-    monkeypatch.setattr(v1_module.client, "complete", _slow)
+    monkeypatch.setattr(_gateway(client).client, "complete", _slow)
     resp = client.post("/v1/chat/completions", json=BODY)
 
     assert resp.status_code == 200
@@ -50,7 +56,7 @@ def test_usage_is_null_rather_than_zero_when_tokens_are_unknown(client, monkeypa
     async def _no_usage(*args: object, **kwargs: object) -> ChatResponse:
         return ChatResponse(text="hi", provider="mock", model="demo")
 
-    monkeypatch.setattr(v1_module.client, "complete", _no_usage)
+    monkeypatch.setattr(_gateway(client).client, "complete", _no_usage)
     resp = client.post("/v1/chat/completions", json=BODY)
 
     assert resp.json()["usage"] is None
@@ -98,7 +104,7 @@ def test_provider_error_maps_to_502(client, monkeypatch):
     async def _boom(*args: object, **kwargs: object):
         raise ProviderError("upstream is down")
 
-    monkeypatch.setattr(v1_module.client, "complete", _boom)
+    monkeypatch.setattr(_gateway(client).client, "complete", _boom)
     assert client.post("/v1/chat/completions", json=BODY).status_code == 502
 
 
@@ -106,7 +112,7 @@ def test_client_error_maps_to_400(client, monkeypatch):
     async def _bad(*args: object, **kwargs: object):
         raise ProviderClientError("unknown model upstream")
 
-    monkeypatch.setattr(v1_module.client, "complete", _bad)
+    monkeypatch.setattr(_gateway(client).client, "complete", _bad)
     assert client.post("/v1/chat/completions", json=BODY).status_code == 400
 
 

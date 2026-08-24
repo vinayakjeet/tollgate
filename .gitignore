@@ -14,3 +14,7 @@ SPEC.md
 BACKLOG.md
 LEARNING.md
 QUOTAS.md
+
+metering*.jsonl
+models/
+bench/results/

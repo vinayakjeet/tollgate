@@ -4,9 +4,11 @@ import spanlight
 from fastapi import FastAPI
 
 from app.config import get_settings, load_dotenv_into_environ
+from app.gateway import Gateway
 from app.logging_config import configure_logging
+from app.metering import JsonlMeteringStore
 from app.middleware import RequestContextMiddleware
-from app.routers import demo, health, v1
+from app.routers import budget, demo, health, v1
 
 SERVICE_NAME = "tollgate"
 
@@ -31,7 +33,16 @@ def create_app() -> FastAPI:
     app = FastAPI(title=SERVICE_NAME, version="0.1.0")
     app.add_middleware(RequestContextMiddleware)
 
+    # The Postgres-backed metering store arrives with the Neon credentials; until
+    # then rows land in a local JSONL file, which restarts survive and scripts can
+    # read. A missing database must not mean missing history.
+    gateway = Gateway.from_settings(
+        settings, metering=JsonlMeteringStore(settings.metering_path)
+    )
+    app.state.gateway = gateway
+
     app.include_router(health.router)
+    app.include_router(budget.router)
     app.include_router(demo.router)
     app.include_router(v1.router)
 

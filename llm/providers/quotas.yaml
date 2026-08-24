@@ -5,6 +5,12 @@
 # Prices are $/1,000,000 tokens. Set to 0.0 for "free while under quota" rather
 # than null, so cost_usd reports a real number for typical free-tier usage;
 # use null only when a provider's pricing is genuinely unknown/unverified.
+#
+# tpm_limit / rpd_limit stay unset until measured against the live provider
+# (BACKLOG M0.1). A missing limit means "unknown" to the budget tracker, never
+# zero: inventing a number here would route traffic away from healthy providers.
+# Each field takes its own *_last_verified date so one can be re-measured
+# without claiming the others were checked too.
 providers:
   gemini:
     base_url: "https://generativelanguage.googleapis.com/v1beta/openai"

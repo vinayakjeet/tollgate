@@ -15,6 +15,7 @@ dependencies = [
     # No opentelemetry here. Spanlight declares the SDK and the OTLP exporter it
     # needs, and nothing in this repo imports otel directly.
     "spanlight",
+    "redis>=8.1.0",
 ]
 
 # Spanlight is instrumented from the first commit rather than retrofitted. The
@@ -38,6 +39,13 @@ dev = [
     # Used only to prove the response really parses in the client callers use.
     "openai>=1.0",
 ]
+
+# Optional groups, not base dependencies, on purpose. The Postgres driver is only
+# imported when DATABASE_URL points at a real store, and sentence-transformers
+# pulls torch, which no CI run and no mock-provider demo should pay for. A fresh
+# clone works from zero without either; `uv sync --group semantic` is the opt-in.
+pg = ["psycopg[binary]>=3.1"]
+semantic = ["sentence-transformers>=3.0"]
 
 [tool.uv]
 package = false
