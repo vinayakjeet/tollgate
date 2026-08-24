@@ -16,6 +16,8 @@ _LOADABLE = re.compile(
     r"[A-Z0-9_]+_API_KEY|DATABASE_URL|REDIS_URL|TOLLGATE_URL|EMBEDDING_MODEL"
     r"|DASTAVEZ_MODEL|ENVIRONMENT|LOG_LEVEL|GIT_SHA|LLM_PROVIDER"
     r"|LLM_MAX_RETRY_ATTEMPTS|TOLLGATE_CHAIN|SKIP_MARGIN|METERING_PATH"
+    r"|CACHE_SALT|CACHE_TTL_S|SEMANTIC_THRESHOLD|EMBEDDING_BACKEND"
+    r"|EMBEDDING_MODEL_DIR"
     r"|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_HEADERS"
 )
 
@@ -79,6 +81,18 @@ class Settings(BaseSettings):
     skip_margin: float = 0.1
     # Where metering rows land when no Postgres store is configured.
     metering_path: str = "metering.jsonl"
+
+    # Cache. The salt protects prompt privacy (see app/cache_key.py); an empty
+    # value generates a per-process secret, which empties the cache on restart
+    # and says so in the log rather than pretending nothing happened.
+    cache_salt: str = ""
+    cache_ttl_s: int = 3600
+    # L2 stays off until both a threshold and an embedder are configured, because
+    # M6 is what sets the threshold; shipping GPTCache's 0.75 unmeasured would be
+    # exactly the intuited-threshold mistake this portfolio exists to avoid.
+    semantic_threshold: float | None = None
+    embedding_backend: str = "none"
+    embedding_model_dir: str = "models/all-MiniLM-L6-v2"
 
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None

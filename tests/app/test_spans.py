@@ -35,8 +35,9 @@ def test_a_request_produces_one_tree_not_eleven_roots(client, exporter):
 
     Without an enclosing span every stage is a parentless root, and one request
     arrives as a handful of unrelated traces that happen to share an attribute. There
-    is no waterfall to read and no way to decompose the overhead figure, which is the
-    entire reason these spans exist.
+    is no waterfall to read and no way to decompose the overhead figure, which is
+    the entire reason these spans exist. The nesting asserted here is the tree in
+    bench/stages.md, which is hashed precisely so this shape cannot drift.
     """
     assert client.post(
         "/v1/chat/completions",
@@ -47,15 +48,32 @@ def test_a_request_produces_one_tree_not_eleven_roots(client, exporter):
     names = {span.name for span in finished}
     assert spans.REQUEST in names
 
-    request_span = _by_name(exporter)[spans.REQUEST]
     roots = [span for span in finished if span.parent is None]
     assert [span.name for span in roots] == [spans.REQUEST]
 
-    stages = [span for span in finished if span.name != spans.REQUEST]
-    assert stages, "no stage spans were recorded at all"
-    for span in stages:
-        assert span.parent is not None, f"{span.name} is a parentless root"
-        assert span.parent.span_id == request_span.context.span_id
+    expected_parent = {
+        spans.CACHE_PROBE: spans.REQUEST,
+        spans.CACHE_EXACT: spans.CACHE_PROBE,
+        spans.CACHE_SEMANTIC: spans.CACHE_PROBE,
+        spans.ROUTE: spans.REQUEST,
+        spans.BUDGET: spans.REQUEST,
+        spans.SELECT: spans.REQUEST,
+        spans.DISPATCH: spans.REQUEST,
+        spans.METER: spans.REQUEST,
+    }
+    present = _by_name(exporter)
+    for stage, parent_name in expected_parent.items():
+        if stage not in present:
+            continue
+        parent = present[stage].parent
+        assert parent is not None, f"{stage} is a parentless root"
+        assert parent.span_id == present[parent_name].context.span_id, (
+            f"{stage} must nest under {parent_name}, not float beside it"
+        )
+    # A miss runs every dispatch-side stage; if any is missing the tree shrank
+    # without stages.md changing.
+    for stage in (spans.DISPATCH, spans.METER):
+        assert stage in present
 
 
 def test_every_stage_in_the_contract_has_a_boundary_written_down():

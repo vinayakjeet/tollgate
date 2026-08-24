@@ -9,13 +9,26 @@ of every fallback-chain scenario.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import secrets
+from dataclasses import dataclass, field
+
+import structlog
 
 from app.budget import BudgetTracker, build_counter_store
+from app.caches import InMemoryVectorIndex, LocalKVBackend, ResponseCache, build_kv_backend
 from app.config import Settings
+from app.embeddings import HashingStubEmbedder, LocalEmbedder
 from app.metering import MeteringStore, NullMeteringStore
 from app.routing import Selector
 from llm import ChatClient
+
+logger = structlog.get_logger(__name__)
+
+
+def _disabled_cache() -> ResponseCache:
+    """A cache whose semantic layer is off and whose store is process-local.
+    Used when a caller (usually a test) builds a Gateway without one."""
+    return ResponseCache(kv=LocalKVBackend(), salt="unset-gateway-cache")
 
 
 def default_chain(settings: Settings) -> list[str]:
@@ -43,6 +56,7 @@ class Gateway:
     metering: MeteringStore
     chain: list[str]
     margin: float
+    cache: ResponseCache = field(default_factory=_disabled_cache)
 
     @staticmethod
     def from_settings(
@@ -50,6 +64,7 @@ class Gateway:
         *,
         metering: MeteringStore | None = None,
         client: ChatClient | None = None,
+        cache: ResponseCache | None = None,
     ) -> Gateway:
         store = build_counter_store(settings.redis_url)
         tracker = BudgetTracker(store)
@@ -60,4 +75,36 @@ class Gateway:
             metering=metering or NullMeteringStore(),
             chain=default_chain(settings),
             margin=settings.skip_margin,
+            cache=cache or build_cache(settings),
         )
+
+
+def build_cache(settings: Settings) -> ResponseCache:
+    salt = settings.cache_salt
+    if not salt:
+        salt = secrets.token_hex(16)
+        logger.warning(
+            "cache.salt_generated",
+            detail="set CACHE_SALT to keep cache entries across restarts",
+        )
+
+    embedder = index = None
+    if settings.embedding_backend == "local":
+        embedder = LocalEmbedder(settings.embedding_model_dir)
+        index = InMemoryVectorIndex()
+    elif settings.embedding_backend == "stub":
+        # Tests and keyless demos only. The stub matches on shared trigrams, not
+        # meaning; serving production traffic through it would be a quiet way to
+        # serve wrong answers while calling it a semantic cache.
+        logger.warning("cache.stub_embedder_active")
+        embedder = HashingStubEmbedder()
+        index = InMemoryVectorIndex()
+
+    return ResponseCache(
+        kv=build_kv_backend(settings.redis_url),
+        salt=salt,
+        embedder=embedder,
+        index=index,
+        threshold=settings.semantic_threshold,
+        ttl_s=settings.cache_ttl_s,
+    )

@@ -14,6 +14,30 @@ reconstructed later from memory. Newest entries at the top.
 
 <!-- Add entries above this line. -->
 
+## 2026-08-24: Cache keys are a whitelist, salted, keyed on the request not the answer
+**Context:** M2.1's key derivation decides which wrong answers are possible. A key that ignores any sampling parameter serves a deterministic answer to a creative request forever; a key readable as a hash of a known prompt lets anyone with Redis access confirm what was served.
+**Decision:** SHA-256 over a per-process salt and the canonical JSON of exactly five fields: model, messages, temperature, top_p, max_tokens. `stream` is excluded on purpose so one stored completion can serve both transports. Unknown request fields are dropped, visibly, by the whitelist.
+**Alternatives considered:** hashing the whole request body would pick up client-side noise (extra fields vary across SDKs) and would re-key when a caller adds an unrelated flag. Blacklisting content fields is the GPTCache-era mistake: every new field silently participates.
+**Consequences:** adding a sampling parameter to the whitelist later is a conscious edit with its own test. Until then it cannot influence keys at all.
+
+## 2026-08-24: The semantic layer ships switched off
+**Context:** GPTCache defaults to similarity 0.75, practitioner consensus sits at 0.92 to 0.97, and nobody publishing in that gap says what it costs in wrong answers. Shipping any number there unmeasured repeats ShipGate's intuited-threshold failure in a new costume.
+**Decision:** L2 activates only when both a threshold (`SEMANTIC_THRESHOLD`) and an embedding backend are explicitly configured. The default gateway runs L1 only. Embeddings come from a local sentence-transformers snapshot fetched by script against a pinned revision (weights never committed); pgvector lives behind the `pg` dependency group until Neon credentials exist.
+**Alternatives considered:** enabling L2 with a "reasonable" threshold would make demos look better and measurements meaningless. Enabling it behind the trigram stub would serve format matches as meaning matches; the stub exists for tests and is labelled wherever it appears.
+**Consequences:** the honest first semantic number this repo publishes will come from M6's curve, and until then `/budget`-style honesty about what is off is the feature.
+
+## 2026-08-24: Both cache layers fail open to a miss
+**Context:** Redis unreachable, or a corrupt payload from a killed process. The question is whether a cache outage may become user-facing.
+**Decision:** every failure inside a probe or a store degrades to a miss (or to skipping the write), logs once at error level, and sets a degraded flag. No exception from the caching layer escapes into a response.
+**Alternatives considered:** failing closed keeps the numbers pure and takes the service down with the cache. Retrying inside the probe adds latency to exactly the path that must be faster than dispatch.
+**Consequences:** the worst thing the cache can do to a request is fail to save money. The degradation counters are visible in logs; wiring them into metrics lands with M5's dashboard work.
+
+## 2026-08-24: The replay workload's duplicate rate is part of the artifact
+**Context:** a hit rate measured against an authored workload is trivially inflatable, and SPEC already commits to saying so wherever a hit rate appears. The defence has to live somewhere stronger than prose.
+**Decision:** `bench/workloads/replay-v1.jsonl` carries its composition in its meta line: per category, 100 unique bases, 60 byte-identical repeats, 40 paraphrases. Regenerated deterministically by `bench/build_workload.py`; two runs produce identical bytes under the published sha256. Hit-rate rows print n>=3 with variance and refuse L2 rows without weights unless `--allow-stub` labels them.
+**Alternatives considered:** sampling real traffic would be better and is impossible here: there is no production traffic to sample, and pretending otherwise is the inflation the meta line exists to prevent.
+**Consequences:** every hit rate quoted from replays of this file can be read against its 30 percent exact-layer ceiling, and anyone can regenerate the file to check the quote.
+
 ## 2026-08-24: Fixed windows aligned to UTC, with the earliest reset as Retry-After
 **Context:** M1 needed counters that predict provider exhaustion, and a documented answer to "all providers exhausted".
 **Decision:** requests and tokens counted in fixed windows (UTC minute for rpm/tpm, UTC day for rpd), keyed by provider and window start, TTL armed once per window. On total exhaustion the 429's `Retry-After` is `ceil(earliest known window reset - now)` across the providers actually tried, floored at one second; when no known limit exists anywhere it floors at 60 because that is the shortest window on the table.
