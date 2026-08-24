@@ -21,6 +21,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class MeterRow:
@@ -101,6 +105,31 @@ class NullMeteringStore:
 
     def read_all(self) -> list[MeterRow]:
         return []
+
+
+class ResilientMeteringStore:
+    """Wraps any store so a metering failure costs a log line, never a response.
+
+    Every append happens after the caller's work succeeded; raising there would
+    turn bookkeeping into an outage. Reads are allowed to fail loudly-ish: the
+    disagreement study would rather see empty than wrong.
+    """
+
+    def __init__(self, inner: MeteringStore) -> None:
+        self._inner = inner
+
+    async def append(self, row: MeterRow) -> None:
+        try:
+            await self._inner.append(row)
+        except Exception as exc:
+            logger.error("metering.append_failed", error=str(exc))
+
+    def read_all(self) -> list[MeterRow]:
+        try:
+            return self._inner.read_all()
+        except Exception as exc:
+            logger.error("metering.read_failed", error=str(exc))
+            return []
 
 
 @dataclass(frozen=True)

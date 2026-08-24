@@ -7,12 +7,13 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from opentelemetry import trace
 from pydantic import BaseModel, Field
 
 from app import spans
+from app.auth import require_edge_key
 from app.caches import CacheEntry, Lookup, MissWithVector
 from app.gateway import Gateway
 from app.metering import new_request_id, now_row
@@ -29,7 +30,7 @@ from llm.types import (
     RateLimitError,
 )
 
-router = APIRouter(prefix="/v1", tags=["openai"])
+router = APIRouter(prefix="/v1", tags=["openai"], dependencies=[Depends(require_edge_key)])
 
 logger = structlog.get_logger(__name__)
 

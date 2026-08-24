@@ -3,6 +3,7 @@ from __future__ import annotations
 import spanlight
 from fastapi import FastAPI
 
+from app.auth import maybe_warn_unauthenticated
 from app.config import get_settings, load_dotenv_into_environ
 from app.gateway import Gateway
 from app.logging_config import configure_logging
@@ -32,6 +33,8 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=SERVICE_NAME, version="0.1.0")
     app.add_middleware(RequestContextMiddleware)
+
+    maybe_warn_unauthenticated()
 
     # The Postgres-backed metering store arrives with the Neon credentials; until
     # then rows land in a local JSONL file, which restarts survive and scripts can

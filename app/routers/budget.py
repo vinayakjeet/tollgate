@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
+from app.auth import require_edge_key
 from app.budget import BudgetTracker
 from app.gateway import Gateway
 from llm.providers.registry import known_providers, quota_verification
 
-router = APIRouter(tags=["budget"])
+router = APIRouter(tags=["budget"], dependencies=[Depends(require_edge_key)])
 
 
 def _limit_payload(state, last_verified: str | None) -> dict:

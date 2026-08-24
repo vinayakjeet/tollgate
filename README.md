@@ -62,6 +62,42 @@ Not yet measured. What will appear here, and the rules it has to satisfy:
 
 See [DECISIONS.md](DECISIONS.md).
 
+## Threat model
+
+Tollgate fronts free-tier quota that the whole portfolio shares, so the assets
+are budget and privacy, in that order.
+
+- **Budget theft.** An open gateway means anyone who finds the URL spends the
+  requests-per-minute every downstream project depends on. One bearer key at
+  the edge (`EDGE_API_KEY`) is the whole defense; it is compared in constant
+  time. When the variable is unset the edge is open and the process says so once
+  at startup: an open gateway must be a decision, not a default nobody noticed.
+- **Prompt disclosure through the cache.** Cache keys are salted (SHA-256 over a
+  per-process secret), so someone with read access to Redis cannot confirm a
+  prompt was served by replaying a hash of it. The salt is not encryption; a
+  cache entry's payload still holds answers in plaintext, which is acceptable
+  only because this deployment has one tenant and no untrusted Redis readers.
+- **Prompt disclosure through traces.** Span attributes are indexed by the
+  backend and queryable by anyone with dashboard access, so `app/spans.py`
+  refuses attribute names that could carry content and the contract is enforced
+  where attributes are written. Prompts never enter spans.
+- **What this threat model does not cover:** multi-tenancy (a non-goal per
+  SPEC), per-caller authorization beyond the one key, and denial of service by
+  request volume. The free tiers themselves rate-limit the latter better than
+  this service could.
+
+## The shared cache is a hazard, and single-tenant is the choice
+
+Both cache layers are keyed on the request alone: caller identity plays no part,
+and `tests/cache/test_shared_scope.py` pins that fact. In a deployment with two
+organizations behind it, organization A's cached answer would be served to
+organization B whenever their prompts collide closely enough, including answers
+derived from prompts containing private data. That failure mode is the entire
+risk surface of a shared semantic cache, and it is why SPEC names multi-tenancy
+a non-goal rather than a roadmap item. This deployment has one tenant: the
+portfolio itself. If that ever changes, the scoping decision changes with it,
+and both the code and this paragraph have to move together.
+
 ## What Broke
 
 Nothing yet worth reporting. Entries land here as they happen, not reconstructed

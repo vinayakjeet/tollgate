@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import re
@@ -17,7 +17,7 @@ _LOADABLE = re.compile(
     r"|DASTAVEZ_MODEL|ENVIRONMENT|LOG_LEVEL|GIT_SHA|LLM_PROVIDER"
     r"|LLM_MAX_RETRY_ATTEMPTS|TOLLGATE_CHAIN|SKIP_MARGIN|METERING_PATH"
     r"|CACHE_SALT|CACHE_TTL_S|SEMANTIC_THRESHOLD|EMBEDDING_BACKEND"
-    r"|EMBEDDING_MODEL_DIR"
+    r"|EMBEDDING_MODEL_DIR|EDGE_API_KEY"
     r"|OTEL_EXPORTER_OTLP_ENDPOINT|OTEL_EXPORTER_OTLP_HEADERS"
 )
 
@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # M6 is what sets the threshold; shipping GPTCache's 0.75 unmeasured would be
     # exactly the intuited-threshold mistake this portfolio exists to avoid.
     semantic_threshold: float | None = None
+    # Bearer key required on every gateway route when set. Empty means open,
+    # which main.py announces in the log rather than leaving silent.
+    edge_api_key: str = ""
     embedding_backend: str = "none"
     embedding_model_dir: str = "models/all-MiniLM-L6-v2"
 
@@ -102,3 +105,4 @@ def get_settings() -> Settings:
     """Not cached on purpose: reading env vars is cheap and tests need to be able
     to monkeypatch env per-test without fighting a cached singleton."""
     return Settings()
+

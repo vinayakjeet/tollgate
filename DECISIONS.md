@@ -14,6 +14,30 @@ reconstructed later from memory. Newest entries at the top.
 
 <!-- Add entries above this line. -->
 
+## 2026-08-24: Edge auth is one key, optional locally, loud about it
+**Context:** M4.2 requires the edge be secure by default, while BAR-1 requires a fresh clone to work in five minutes with no configuration at all.
+**Decision:** a single bearer key (`EDGE_API_KEY`) guards every gateway route when set, compared via `hmac.compare_digest`. When unset, routes are open and startup emits exactly one warning naming the fix.
+**Alternatives considered:** making the key mandatory would break works-from-zero; per-caller keys are multi-tenant machinery for a deployment with one tenant (SPEC non-goal).
+**Consequences:** the deployed compose file must set the variable or ship an open edge with a warning nobody reads. The runbook says so.
+
+## 2026-08-24: Streaming retries until first byte, then never
+**Context:** the chassis retries whole requests; a stream is not whole once its first chunk has been forwarded, and retrying mid-stream would splice two answers into one.
+**Decision:** `ChatClient.stream_complete` applies throttle gating, 429 trips and backoff only before the first chunk arrives. After it, any failure propagates and the API layer emits an error frame followed by a clean `[DONE]`, so the client sees an honest end rather than a hang or a spliced answer.
+**Alternatives considered:** buffering the stream and retrying transparently would fold time-to-first-token into total latency and hand this project's headline number exactly the flattering bias SPEC forbids.
+**Consequences:** callers of streamed requests must tolerate error frames mid-stream. The official SDK surfaces them as exceptions on iteration, which is the correct client behaviour.
+
+## 2026-08-24: Overhead on streams rides a final chunk frame, not a named event
+**Context:** headers are gone before a stream's overhead is known. The obvious SSE answer, a separately named event, turned out to break the official OpenAI SDK: it parses every data line as a chat chunk, named event or not.
+**Decision:** the last frame before `[DONE]` is a chunk-shaped object whose extra top-level fields carry `tollgate_overhead_ms`, provider, cache outcome and token counts. The SDK tolerates the unknown fields; raw readers get their numbers; the README documents the shape.
+**Alternatives considered:** omitting the figure from streams entirely would hide half the measurement; SSE comments carry it but no client can read them programmatically.
+**Consequences:** one empty delta chunk appears at the end of every stream. Callers filtering on content see nothing; auditors see everything.
+
+## 2026-08-24: Metering failures cost log lines, never responses
+**Context:** metering writes happen after success; raising there converts bookkeeping into an outage for precisely the requests worth recording.
+**Decision:** every store handed to the gateway is wrapped in `ResilientMeteringStore`, which swallows and logs append failures and returns empty (never partial) on read failures.
+**Alternatives considered:** letting errors propagate keeps the store honest and the service fragile; dropping the metering layer silently keeps the service up and the disagreement study blind.
+**Consequences:** `/budget`-style consumers of metering must treat an empty read as "unknown", which they already do.
+
 ## 2026-08-24: Cache keys are a whitelist, salted, keyed on the request not the answer
 **Context:** M2.1's key derivation decides which wrong answers are possible. A key that ignores any sampling parameter serves a deterministic answer to a creative request forever; a key readable as a hash of a known prompt lets anyone with Redis access confirm what was served.
 **Decision:** SHA-256 over a per-process salt and the canonical JSON of exactly five fields: model, messages, temperature, top_p, max_tokens. `stream` is excluded on purpose so one stored completion can serve both transports. Unknown request fields are dropped, visibly, by the whitelist.

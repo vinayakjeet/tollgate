@@ -18,7 +18,7 @@ from app.budget import BudgetTracker, build_counter_store
 from app.caches import InMemoryVectorIndex, LocalKVBackend, ResponseCache, build_kv_backend
 from app.config import Settings
 from app.embeddings import HashingStubEmbedder, LocalEmbedder
-from app.metering import MeteringStore, NullMeteringStore
+from app.metering import MeteringStore, NullMeteringStore, ResilientMeteringStore
 from app.routing import Selector
 from llm import ChatClient
 
@@ -68,11 +68,15 @@ class Gateway:
     ) -> Gateway:
         store = build_counter_store(settings.redis_url)
         tracker = BudgetTracker(store)
+        metering_store = metering or NullMeteringStore()
+        # The null store needs no wrapper: there is nothing to fail.
+        if not isinstance(metering_store, NullMeteringStore):
+            metering_store = ResilientMeteringStore(metering_store)
         return Gateway(
             client=client or ChatClient(max_retry_attempts=settings.llm_max_retry_attempts),
             tracker=tracker,
             selector=Selector(tracker, margin=settings.skip_margin),
-            metering=metering or NullMeteringStore(),
+            metering=metering_store,
             chain=default_chain(settings),
             margin=settings.skip_margin,
             cache=cache or build_cache(settings),

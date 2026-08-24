@@ -1,0 +1,2 @@
+{"ts":1787564730.4089532,"kind":"request","provider":"streamy","detail":"","request_id":"968f70c663a74c09a5884fd08f6f7e9c","model":"m","cache_outcome":"miss","tokens_in":2,"tokens_out":3,"overhead_ms":0.368,"status":200,"tags":{}}
+{"ts":1787564773.3721626,"kind":"request","provider":"streamy","detail":"","request_id":"f98ab6324c9f4310bdd9154e6a2b9587","model":"m","cache_outcome":"miss","tokens_in":2,"tokens_out":3,"overhead_ms":0.345,"status":200,"tags":{}}
