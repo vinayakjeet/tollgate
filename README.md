@@ -66,14 +66,16 @@ looks the way it does; the five traps it names are the five facts.
 
 | cell | RPS | overhead ms p50/p95/p99 | max in-flight | five facts |
 |---|---|---|---|---|
-| in-process mock, non-streaming |    359.0 | p50   0.206  p95   0.263  p99   0.453 |   4 | upstream=mock, streaming=no, callbacks=off, warmth=warm, load=steady c=4 |
-| in-process mock, non-streaming, saturation |    375.5 | p50   0.209  p95   0.271  p99   0.396 |  32 | upstream=mock, streaming=no, callbacks=off, warmth=warm, load=saturation c=32 |
-| in-process mock, streaming |    293.8 | p50   4.105  p95   6.504  p99   7.061 |   4 | upstream=mock, streaming=yes, callbacks=off, warmth=warm, load=steady c=4 |
-| in-process mock, streaming, saturation |    149.6 | p50  66.569  p95 121.467  p99 136.440 |  32 | upstream=mock, streaming=yes, callbacks=off, warmth=warm, load=saturation c=32 |
-| network_mock, non-streaming |     78.0 | p50   0.587  p95   1.327  p99   2.719 |   4 | upstream=network_mock, streaming=no, callbacks=off, warmth=warm, load=steady c=4 |
-| network_mock, non-streaming, saturation |     64.7 | p50   0.543  p95   1.072  p99   2.847 |  32 | upstream=network_mock, streaming=no, callbacks=off, warmth=warm, load=saturation c=32 |
-| network_mock, streaming |     38.6 | p50   3.341  p95  10.236  p99  12.749 |   4 | upstream=network_mock, streaming=yes, callbacks=off, warmth=warm, load=steady c=4 |
-| network_mock, streaming, saturation |     58.9 | p50  51.210  p95 103.251  p99 140.641 |  32 | upstream=network_mock, streaming=yes, callbacks=off, warmth=warm, load=saturation c=32 |
+| in-process mock, non-streaming |    362.4 | p50   0.208  p95   0.239  p99   0.320 |   4 | upstream=mock, streaming=no, callbacks=off, warmth=warm, load=steady c=4 |
+| in-process mock, non-streaming, saturation |    383.1 | p50   0.201  p95   0.258  p99   0.369 |  32 | upstream=mock, streaming=no, callbacks=off, warmth=warm, load=saturation c=32 |
+| in-process mock, streaming |    303.1 | p50   4.097  p95   6.543  p99   6.927 |   4 | upstream=mock, streaming=yes, callbacks=off, warmth=warm, load=steady c=4 |
+| in-process mock, streaming, saturation |    332.7 | p50  32.006  p95  58.883  p99  62.513 |  32 | upstream=mock, streaming=yes, callbacks=off, warmth=warm, load=saturation c=32 |
+| network_mock, non-streaming |     83.9 | p50   0.332  p95   0.528  p99   0.797 |   4 | upstream=network_mock, streaming=no, callbacks=off, warmth=warm, load=steady c=4 |
+| network_mock, non-streaming, saturation |    151.0 | p50   0.227  p95   0.311  p99   0.453 |  32 | upstream=network_mock, streaming=no, callbacks=off, warmth=warm, load=saturation c=32 |
+| network_mock, streaming |     32.9 | p50   4.800  p95   9.979  p99  10.528 |   4 | upstream=network_mock, streaming=yes, callbacks=off, warmth=warm, load=steady c=4 |
+| network_mock, streaming, saturation |    141.0 | p50  19.153  p95  39.578  p99  54.690 |  32 | upstream=network_mock, streaming=yes, callbacks=off, warmth=warm, load=saturation c=32 |
+
+TTFT network_mock, streaming: live median 121.261ms, cached-replay median 24.344ms. A cached hit skips dispatch entirely; the gap is disclosed rather than hidden.
 
 Published p99 added-latency figures for scale (none measured here):
 - LiteLLM Rust gateway, July 2026 post: ~0.7 ms
