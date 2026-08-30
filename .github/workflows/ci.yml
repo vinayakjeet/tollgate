@@ -10,6 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The commit scan reads the last twenty messages. A default checkout
+          # fetches one, which quietly reduced that half of the checker to a
+          # no-op everywhere it ran.
+          fetch-depth: 21
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5

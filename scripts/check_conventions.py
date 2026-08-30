@@ -61,12 +61,21 @@ ABSOLUTES = re.compile(r"\b(?:solves|blocks|prevents)\b", re.IGNORECASE)
 
 
 def tracked_text_files() -> list[Path]:
+    # -z, because git quotes any path holding a non-ASCII or unusual byte and
+    # prints it in escaped octal form instead. That quoted string names no file
+    # on disk, so the path fails is_file() and drops out of the scan without
+    # saying so. A file could then carry a credential past this checker by being
+    # named in Devanagari, which is a corpus this portfolio actually has.
     out = subprocess.run(
-        ["git", "ls-files"], capture_output=True, text=True, check=True
-    ).stdout.splitlines()
+        ["git", "ls-files", "-z"], capture_output=True, text=True, check=True
+    ).stdout.split(chr(0))
     return [
-        p for name in out
-        if (p := Path(name)).suffix in TEXT_SUFFIXES and p.name not in EXEMPT and p.is_file()
+        p
+        for name in out
+        if name
+        and (p := Path(name)).suffix in TEXT_SUFFIXES
+        and p.name not in EXEMPT
+        and p.is_file()
     ]
 
 
@@ -139,7 +148,13 @@ def commit_messages(count: int = 20) -> list[tuple[str, str]]:
         text=True,
     )
     if out.returncode != 0:
-        return []
+        # Not an empty list. Returning one here would report "conventions clean"
+        # for a repository whose commit messages were never read, which is the
+        # failure mode a checker must never have.
+        raise RuntimeError(
+            "git log failed, so no commit message was scanned: "
+            + out.stderr.strip()
+        )
 
     messages = []
     for block in out.stdout.split(separator):
