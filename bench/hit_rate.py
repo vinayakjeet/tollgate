@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from app.caches import CacheEntry, InMemoryVectorIndex, LocalKVBackend, ResponseCache  # noqa: E402
-from app.embeddings import HashingStubEmbedder, LocalEmbedder  # noqa: E402
+from app.embeddings import HashingStubEmbedder, LocalEmbedder, snapshot_label  # noqa: E402
 
 WORKLOAD = REPO_ROOT / "bench" / "workloads" / "replay-v1.jsonl"
 
@@ -121,7 +121,9 @@ def main() -> None:
     stub_labelled = False
     try:
         embedder = LocalEmbedder(REPO_ROOT / "models" / "all-MiniLM-L6-v2")
-        embedder_label = "local:all-MiniLM-L6-v2"
+        # The label carries the revision the snapshot directory names, so a
+        # published hit rate says which weights produced it.
+        embedder_label = snapshot_label(embedder.path)
     except Exception:
         if not args.allow_stub:
             print(

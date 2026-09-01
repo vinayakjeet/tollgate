@@ -41,6 +41,59 @@ class HashingStubEmbedder(EmbeddingBackend):
         return [v / norm for v in vec]
 
 
+class NoSnapshot(RuntimeError):
+    """No pinned snapshot to load, with enough detail to fix it in one command."""
+
+
+def resolve_snapshot(model_dir: Path | str, models_root: Path | None = None) -> Path:
+    """Find the pinned snapshot, whatever it happens to be called.
+
+    `scripts/fetch_embedding_model.py` writes to `<repo>__<revision>`, because a
+    directory that does not name its revision is a directory that silently
+    measures one model this week and another next week. Its callers all pointed at
+    an unsuffixed `models/all-MiniLM-L6-v2`, so the fetch script and everything
+    that consumes it had never been run in the same place: the fetch reported
+    success, the bench reported no model, and both were correct.
+
+    An explicit directory still wins when it exists, so a caller that pins its own
+    path keeps working. Otherwise the single snapshot under `models/` is used, and
+    two snapshots are an error rather than a coin flip.
+    """
+    explicit = Path(model_dir)
+    if (explicit / "config.json").exists():
+        return explicit
+
+    root = models_root or explicit.parent
+    if root.is_dir():
+        found = sorted(p for p in root.iterdir() if (p / "config.json").exists())
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            names = ", ".join(p.name for p in found)
+            raise NoSnapshot(
+                f"{len(found)} snapshots under {root}, so which one produced a number "
+                f"would be ambiguous: {names}. Point embedding_model_dir at one."
+            )
+    raise NoSnapshot(
+        f"no pinned snapshot under {root}. Fetch one with: uv run python "
+        "scripts/fetch_embedding_model.py --repo sentence-transformers/"
+        "all-MiniLM-L6-v2 --revision <sha>"
+    )
+
+
+def snapshot_label(path: Path) -> str:
+    """How a snapshot names itself in a report.
+
+    Carries the revision, because pinning a model and then publishing a number
+    against an unversioned name throws away the thing the pin was for.
+    """
+    name = path.name
+    if "__" in name:
+        repo, _, revision = name.rpartition("__")
+        return f"local:{repo.replace('__', '/')}@{revision[:12]}"
+    return f"local:{name}"
+
+
 class LocalEmbedder(EmbeddingBackend):
     """A pinned sentence-transformers snapshot from `models/`, loaded lazily so
     the base install (and every CI run) never pays for torch."""
@@ -53,7 +106,8 @@ class LocalEmbedder(EmbeddingBackend):
                 "embedding_backend=local needs the 'semantic' dependency group: "
                 "uv sync --group semantic"
             ) from exc
-        self._model = SentenceTransformer(str(model_dir))
+        self.path = resolve_snapshot(model_dir)
+        self._model = SentenceTransformer(str(self.path))
 
     def embed(self, text: str) -> list[float]:
         vector = self._model.encode(text, normalize_embeddings=True)
